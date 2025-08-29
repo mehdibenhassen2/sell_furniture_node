@@ -1,5 +1,3 @@
-
-
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -8,14 +6,15 @@ const { MongoClient, ServerApiVersion } = require('mongodb');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ✅ MongoDB URI from env (never hardcode secrets!)
+// ✅ MongoDB URI from environment variables
 const uri = process.env.MONGODB_URI;
 
 if (!uri) {
   console.error("❌ MONGODB_URI is not set in environment variables!");
-  process.exit(1); // stop app if no DB URI
+  process.exit(1);
 }
 
+// Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -29,6 +28,7 @@ const client = new MongoClient(uri, {
 
 let locationsCollection;
 
+// Async function to start the server after DB connection
 async function startServer() {
   try {
     await client.connect();
@@ -42,15 +42,13 @@ async function startServer() {
     app.post('/api/locations', async (req, res) => {
       try {
         const { name } = req.body;
-        if (!name) {
-          return res.status(400).json({ error: 'Location name is required' });
-        }
+        if (!name) return res.status(400).json({ error: 'Location name is required' });
 
         const newLocation = { name };
         const result = await locationsCollection.insertOne(newLocation);
         res.status(201).json({ id: result.insertedId, ...newLocation });
       } catch (error) {
-        console.error("Error inserting location:", error);
+        console.error("❌ Error inserting location:", error);
         res.status(500).json({ error: "Failed to add location" });
       }
     });
@@ -61,20 +59,36 @@ async function startServer() {
         const locations = await locationsCollection.find().toArray();
         res.json(locations);
       } catch (error) {
-        console.error("Error fetching locations:", error);
+        console.error("❌ Error fetching locations:", error);
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
 
-    // Start server AFTER DB is connected
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+    // Start Express server
+    const server = app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+
+    // Graceful shutdown (for Render or other PaaS)
+    process.on('SIGTERM', () => {
+      console.log("⚡ SIGTERM received, closing server...");
+      server.close(async () => {
+        await client.close();
+        console.log("✅ MongoDB connection closed. Exiting.");
+        process.exit(0);
+      });
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+      process.exit(1);
     });
 
   } catch (error) {
-    console.error("❌ Failed to start server:", error);
+    console.error("❌ Failed to connect to MongoDB:", error);
     process.exit(1);
   }
 }
 
+// Start the server
 startServer();
