@@ -4,7 +4,7 @@ const cors = require('cors');
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
 // ⚠️ Never hardcode credentials in code. Use environment variables in Render!
-const uri = process.env.MONGO_URI || "mongodb+srv://alfredbouha_db:Manela1982@sellfurnituredb.faz8usm.mongodb.net/?retryWrites=true&w=majority&appName=sellfurnitureDB";
+const uri = "mongodb+srv://alfredbouha_db:Manela1982@sellfurnituredb.faz8usm.mongodb.net/?retryWrites=true&w=majority&appName=sellfurnitureDB";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
