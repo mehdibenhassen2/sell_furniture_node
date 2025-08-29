@@ -1,12 +1,20 @@
+require('dotenv').config(); // ✅ load .env locally
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
-const uri = process.env.MONGO_URI; // ✅ Use environment variable
-
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ✅ MongoDB URI from env (never hardcode secrets!)
+const uri = process.env.MONGODB_URI;
+
+if (!uri) {
+  console.error("❌ MONGODB_URI is not set in environment variables!");
+  process.exit(1); // stop app if no DB URI
+}
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -24,17 +32,20 @@ let locationsCollection;
 async function startServer() {
   try {
     await client.connect();
-    const db = client.db("sellfurnitureDB"); // ✅ make sure this DB exists in Atlas
+    const db = client.db("sellfurnitureDB");
     locationsCollection = db.collection("locations");
     console.log("✅ Connected to MongoDB");
 
-    // POST
+    // --- ROUTES ---
+
+    // POST: Add new location
     app.post('/api/locations', async (req, res) => {
       try {
         const { name } = req.body;
         if (!name) {
           return res.status(400).json({ error: 'Location name is required' });
         }
+
         const newLocation = { name };
         const result = await locationsCollection.insertOne(newLocation);
         res.status(201).json({ id: result.insertedId, ...newLocation });
@@ -44,7 +55,7 @@ async function startServer() {
       }
     });
 
-    // GET
+    // GET: Fetch all locations
     app.get('/api/locations', async (req, res) => {
       try {
         const locations = await locationsCollection.find().toArray();
@@ -55,14 +66,14 @@ async function startServer() {
       }
     });
 
-    // Start server
+    // Start server AFTER DB is connected
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🚀 Server running on http://localhost:${PORT}`);
     });
 
   } catch (error) {
     console.error("❌ Failed to start server:", error);
-    process.exit(1); // ✅ exit so Render shows error
+    process.exit(1);
   }
 }
 
