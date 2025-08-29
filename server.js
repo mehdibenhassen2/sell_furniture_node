@@ -4,9 +4,7 @@ const cors = require('cors');
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
 // ⚠️ Never hardcode credentials in code. Use environment variables in Render!
-const uri =
-  process.env.MONGO_URI ||
-  "mongodb+srv://alfredbouha_db:Manela1982@sellfurnituredb.faz8usm.mongodb.net/?retryWrites=true&w=majority&appName=sellfurnitureDB";
+const uri = process.env.MONGO_URI || "mongodb+srv://alfredbouha_db:Manela1982@sellfurnituredb.faz8usm.mongodb.net/?retryWrites=true&w=majority&appName=sellfurnitureDB";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,66 +29,55 @@ let db, locationsCollection;
 async function connectDB() {
   try {
     await client.connect();
-
-    // Make sure this matches your DB name in Atlas
-    db = client.db("sellfurnitureDB");
-
-    // Collection name will be created if it doesn’t exist
-    locationsCollection = db.collection("locations");
-
+    db = client.db("sellfurnitureDB");   // 👈 choose your DB name
+    locationsCollection = db.collection("locations"); // 👈 use/create collection
     console.log("✅ Connected to MongoDB");
   } catch (error) {
     console.error("❌ MongoDB connection error:", error);
-    process.exit(1); // Stop server if DB fails
   }
 }
+connectDB();
 
 // --------------------------
 // ✅ Routes
 // --------------------------
 
-// POST: Add a new location
+// POST: Add a new location (to MongoDB)
 app.post('/api/locations', async (req, res) => {
   try {
-    if (!locationsCollection) {
-      return res.status(500).json({ error: "DB not connected yet" });
-    }
-
     const { name } = req.body;
+
     if (!name) {
-      return res.status(400).json({ error: "Location name is required" });
+      return res.status(400).json({ error: 'Location name is required' });
     }
 
     const newLocation = { name };
+
     const result = await locationsCollection.insertOne(newLocation);
 
     res.status(201).json({ id: result.insertedId, ...newLocation });
+   
   } catch (error) {
-    console.error("❌ Error inserting location:", error);
-    res.status(500).json({ error: error.message });
+    console.error("Error inserting location:", error);
+    res.status(500).json({ error: "Failed to add location" });
   }
 });
 
-// GET: Retrieve all locations
+// GET: Retrieve all locations (from MongoDB)
 app.get('/api/locations', async (req, res) => {
   try {
-    if (!locationsCollection) {
-      return res.status(500).json({ error: "DB not connected yet" });
-    }
-
     const locations = await locationsCollection.find().toArray();
     res.json(locations);
   } catch (error) {
-    console.error("❌ Error fetching locations:", error);
-    res.status(500).json({ error: error.message });
+    console.error("Error fetching locations:", error);
+    res.status(500).json({ error: "Failed to fetch locations" });
   }
 });
 
+
 // --------------------------
-// ✅ Start Server AFTER DB
+// ✅ Start Server
 // --------------------------
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
-  });
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
