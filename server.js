@@ -59,7 +59,7 @@ async function startServer() {
         const locations = await locationsCollection.find().toArray();
         res.json(locations);
       } catch (error) {
-        console.error("❌ Error fetching locations:", error);
+        console.error("MongoDB fetch error:", error); // full error
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
