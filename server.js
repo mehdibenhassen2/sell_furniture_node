@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
-const uri = "mongodb+srv://alfredbouha_db:Manela1982@sellfurnituredb.faz8usm.mongodb.net/?retryWrites=true&w=majority&appName=sellfurnitureDB";
+const uri = process.env.MONGO_URI; // ✅ Use environment variable
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,11 +24,9 @@ let locationsCollection;
 async function startServer() {
   try {
     await client.connect();
-    const db = client.db("sellfurnitureDB");
+    const db = client.db("sellfurnitureDB"); // ✅ make sure this DB exists in Atlas
     locationsCollection = db.collection("locations");
     console.log("✅ Connected to MongoDB");
-
-    // Define routes only after DB is connected
 
     // POST
     app.post('/api/locations', async (req, res) => {
@@ -37,7 +35,6 @@ async function startServer() {
         if (!name) {
           return res.status(400).json({ error: 'Location name is required' });
         }
-
         const newLocation = { name };
         const result = await locationsCollection.insertOne(newLocation);
         res.status(201).json({ id: result.insertedId, ...newLocation });
@@ -58,13 +55,14 @@ async function startServer() {
       }
     });
 
-    // Start server AFTER routes are set
+    // Start server
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`🚀 Server running on port ${PORT}`);
     });
 
   } catch (error) {
     console.error("❌ Failed to start server:", error);
+    process.exit(1); // ✅ exit so Render shows error
   }
 }
 
