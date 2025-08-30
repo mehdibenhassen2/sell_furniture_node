@@ -34,6 +34,7 @@ async function startServer() {
     await client.connect();
     const db = client.db("sellfurnitureDB");
     locationsCollection = db.collection("locations");
+    itemsCollection = db.collection("items");
     console.log("✅ Connected to MongoDB");
 
     // --- ROUTES ---
@@ -63,7 +64,16 @@ async function startServer() {
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
-
+    // GET: Fetch all items
+    app.get('/api/items', async (req, res) => {
+      try {
+        const items = await itemsCollection.find().toArray();
+        res.json(items);
+      } catch (error) {
+        console.error("MongoDB fetch error:", error); // full error
+        res.status(500).json({ error: "Failed to fetch locations" });
+      }
+    });
     // Start Express server
     const server = app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
