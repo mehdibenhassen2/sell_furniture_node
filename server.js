@@ -35,6 +35,8 @@ async function startServer() {
     const db = client.db("sellfurnitureDB");
     locationsCollection = db.collection("locations");
     itemsCollection = db.collection("items");
+    visitsCollection = db.collection("visits"); // ✅ new collection for page visits
+
     console.log("✅ Connected to MongoDB");
 
     // --- ROUTES ---
@@ -72,6 +74,21 @@ async function startServer() {
       } catch (error) {
         console.error("MongoDB fetch error:", error); // full error
         res.status(500).json({ error: "Failed to fetch locations" });
+      }
+    });
+     // ✅ POST: Log a page visit
+     app.post('/api/visit', async (req, res) => {
+      try {
+        const visit = {
+          timestamp: new Date(),
+          ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+          userAgent: req.headers['user-agent'],
+        };
+        const result = await visitsCollection.insertOne(visit);
+        res.status(201).json({ id: result.insertedId, ...visit });
+      } catch (error) {
+        console.error("❌ Error logging visit:", error);
+        res.status(500).json({ error: "Failed to log visit" });
       }
     });
     // Start Express server
