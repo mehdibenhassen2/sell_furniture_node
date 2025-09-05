@@ -1,7 +1,7 @@
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const express = require("express");
+const bodyParser = require("body-parser");
+const cors = require("cors");
+const { MongoClient, ServerApiVersion } = require("mongodb");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -42,10 +42,11 @@ async function startServer() {
     // --- ROUTES ---
 
     // POST: Add new location
-    app.post('/api/locations', async (req, res) => {
+    app.post("/api/locations", async (req, res) => {
       try {
         const { name } = req.body;
-        if (!name) return res.status(400).json({ error: 'Location name is required' });
+        if (!name)
+          return res.status(400).json({ error: "Location name is required" });
 
         const newLocation = { name };
         const result = await locationsCollection.insertOne(newLocation);
@@ -57,7 +58,7 @@ async function startServer() {
     });
 
     // GET: Fetch all locations
-    app.get('/api/locations', async (req, res) => {
+    app.get("/api/locations", async (req, res) => {
       try {
         const locations = await locationsCollection.find().toArray();
         res.json(locations);
@@ -67,7 +68,7 @@ async function startServer() {
       }
     });
     // GET: Fetch all items
-    app.get('/api/items', async (req, res) => {
+    app.get("/api/items", async (req, res) => {
       try {
         const items = await itemsCollection.find().toArray();
         res.json(items);
@@ -76,13 +77,60 @@ async function startServer() {
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
-     // ✅ POST: Log a page visit
-     app.post('/api/visit', async (req, res) => {
+
+    // POST: Log a search term (optional - if you want to save searches)
+    app.post("/api/search", async (req, res) => {
+      try {
+        const { term } = req.body;
+        if (!term)
+          return res.status(400).json({ error: "Search term is required" });
+
+        // Save the search term into a collection if needed
+        const search = { term, timestamp: new Date() };
+        const result = await db.collection("searches").insertOne(search);
+
+        res.status(201).json({ id: result.insertedId, ...search });
+      } catch (error) {
+        console.error("❌ Error logging search:", error);
+        res.status(500).json({ error: "Failed to log search" });
+      }
+    });
+
+    // GET: Fetch filtered items by query string
+    app.get("/api/search", async (req, res) => {
+      try {
+        const query = req.query.q; // e.g. /api/search?q=chair
+        if (!query) {
+          return res
+            .status(400)
+            .json({ error: "Query parameter 'q' is required" });
+        }
+
+        // Case-insensitive regex search on name/title/description
+        const items = await itemsCollection
+          .find({
+            $or: [
+              { name: { $regex: query, $options: "i" } },
+              { title: { $regex: query, $options: "i" } },
+              { description: { $regex: query, $options: "i" } },
+            ],
+          })
+          .toArray();
+
+        res.json(items);
+      } catch (error) {
+        console.error("❌ MongoDB search error:", error);
+        res.status(500).json({ error: "Failed to search items" });
+      }
+    });
+
+    // ✅ POST: Log a page visit
+    app.post("/api/visit", async (req, res) => {
       try {
         const visit = {
           timestamp: new Date(),
-          ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
-          userAgent: req.headers['user-agent'],
+          ip: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+          userAgent: req.headers["user-agent"],
         };
         const result = await visitsCollection.insertOne(visit);
         res.status(201).json({ id: result.insertedId, ...visit });
@@ -97,7 +145,7 @@ async function startServer() {
     });
 
     // Graceful shutdown (for Render or other PaaS)
-    process.on('SIGTERM', () => {
+    process.on("SIGTERM", () => {
       console.log("⚡ SIGTERM received, closing server...");
       server.close(async () => {
         await client.close();
@@ -106,11 +154,10 @@ async function startServer() {
       });
     });
 
-    process.on('unhandledRejection', (reason, promise) => {
-      console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    process.on("unhandledRejection", (reason, promise) => {
+      console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
       process.exit(1);
     });
-
   } catch (error) {
     console.error("❌ Failed to connect to MongoDB:", error);
     process.exit(1);
