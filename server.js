@@ -77,26 +77,9 @@ async function startServer() {
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
+    // ✅ search request: 
 
-    // POST: Log a search term (optional - if you want to save searches)
-    app.post("/api/search", async (req, res) => {
-      try {
-        const { term } = req.body;
-        if (!term)
-          return res.status(400).json({ error: "Search term is required" });
-
-        // Save the search term into a collection if needed
-        const search = { term, timestamp: new Date() };
-        const result = await db.collection("searches").insertOne(search);
-
-        res.status(201).json({ id: result.insertedId, ...search });
-      } catch (error) {
-        console.error("❌ Error logging search:", error);
-        res.status(500).json({ error: "Failed to log search" });
-      }
-    });
-
-    // GET: Fetch filtered items by query string
+    // GET: Fetch filtered items by search term
     app.get("/api/search", async (req, res) => {
       try {
         const query = req.query.q; // e.g. /api/search?q=chair
