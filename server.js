@@ -77,7 +77,12 @@ async function startServer() {
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
-    // ✅ search request: 
+    //get total number of items
+    app.get("/api/totalNumber", (req, res) => {
+      let totalNumber = itemsCollection.length;
+      res.send(totalNumber);
+    });
+    // ✅ search request:
 
     // GET: Fetch filtered items by search term
     app.get("/api/search", async (req, res) => {
