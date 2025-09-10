@@ -81,10 +81,10 @@ async function startServer() {
     app.get("/api/totalNumber", async (req, res) => {
       try {
         const totalNumber = await itemsCollection.countDocuments({});
-        res.json({ totalNumber });
+        return res.json({ totalNumber });
       } catch (error) {
         console.error("Error fetching total number of items:", error);
-        res.status(500).send("Error fetching total number of items");
+        return res.status(500).send("Error fetching total number of items");
       }
     });
     // ✅ search request:
