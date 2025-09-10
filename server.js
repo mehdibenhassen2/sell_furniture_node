@@ -78,9 +78,14 @@ async function startServer() {
       }
     });
     //get total number of items
-    app.get("/api/totalNumber", (req, res) => {
-      let totalNumber = itemsCollection.length;
-      res.send(totalNumber);
+    app.get("/api/totalNumber", async (req, res) => {
+      try {
+        const totalNumber = await itemsCollection.countDocuments({});
+        res.json({ totalNumber });
+      } catch (error) {
+        console.error("Error fetching total number of items:", error);
+        res.status(500).send("Error fetching total number of items");
+      }
     });
     // ✅ search request:
 
