@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ✅ MongoDB URI from environment variables
-const uri = process.env.MONGO_URI;
+const uri = process.env.MONGODB_URI;
 // const uri = process.env.MONGO_URI || "mongodb+srv://alfredbouha_db:Manela1982@sellfurnituredb.faz8usm.mongodb.net/?retryWrites=true&w=majority&appName=sellfurnitureDB";
 
 if (!uri) {
