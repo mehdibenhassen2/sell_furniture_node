@@ -7,7 +7,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ✅ MongoDB URI from environment variables
-const uri = process.env.MONGODB_URI;
+const uri = process.env.MONGO_URI;
+// const uri = process.env.MONGO_URI || "mongodb+srv://alfredbouha_db:Manela1982@sellfurnituredb.faz8usm.mongodb.net/?retryWrites=true&w=majority&appName=sellfurnitureDB";
 
 if (!uri) {
   console.error("❌ MONGODB_URI is not set in environment variables!");
@@ -36,7 +37,7 @@ async function startServer() {
     locationsCollection = db.collection("locations");
     itemsCollection = db.collection("items");
     visitsCollection = db.collection("visits"); // ✅ new collection for page visits
-
+    usersCollection = db.collection("users");
     console.log("✅ Connected to MongoDB");
 
     // --- ROUTES ---
@@ -116,6 +117,36 @@ async function startServer() {
         res.status(500).json({ error: "Failed to search items" });
       }
     });
+// authentication
+// POST: Login
+app.post("/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await usersCollection.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ error: "Invalid email or password" });
+    }
+
+    // Vérifier le mot de passe
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(400).json({ error: "Invalid email or password" });
+    }
+
+    // Générer un token JWT
+    const token = jwt.sign(
+      { email: user.email, role: user.role },
+      "secretKey", // ⚠️ à mettre dans process.env.JWT_SECRET en production
+      { expiresIn: "1h" }
+    );
+
+    res.json({ token });
+  } catch (error) {
+    console.error("❌ Login error:", error);
+    res.status(500).json({ error: "Failed to login" });
+  }
+});
 
     // ✅ POST: Log a page visit
     app.post("/api/visit", async (req, res) => {
