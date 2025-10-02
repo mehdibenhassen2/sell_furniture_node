@@ -2,21 +2,24 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion } = require("mongodb");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ✅ MongoDB URI from environment variables
 const uri = process.env.MONGODB_URI;
-// const uri = process.env.MONGO_URI || "mongodb+srv://alfredbouha_db:Manela1982@sellfurnituredb.faz8usm.mongodb.net/?retryWrites=true&w=majority&appName=sellfurnitureDB";
-
 if (!uri) {
   console.error("❌ MONGODB_URI is not set in environment variables!");
   process.exit(1);
 }
 
+// ✅ JWT secret
+const JWT_SECRET = process.env.JWT_SECRET || "defaultSecret";
+
 // Middleware
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(bodyParser.json());
 
 const client = new MongoClient(uri, {
@@ -27,7 +30,20 @@ const client = new MongoClient(uri, {
   },
 });
 
-let locationsCollection;
+let locationsCollection, itemsCollection, visitsCollection, usersCollection;
+
+// 🔐 Auth middleware
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  if (!authHeader) return res.status(401).json({ error: "No token provided" });
+
+  const token = authHeader.split(" ")[1];
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) return res.status(403).json({ error: "Invalid token" });
+    req.user = decoded; // store user info
+    next();
+  });
+}
 
 // Async function to start the server after DB connection
 async function startServer() {
@@ -36,7 +52,7 @@ async function startServer() {
     const db = client.db("sellfurnitureDB");
     locationsCollection = db.collection("locations");
     itemsCollection = db.collection("items");
-    visitsCollection = db.collection("visits"); // ✅ new collection for page visits
+    visitsCollection = db.collection("visits");
     usersCollection = db.collection("users");
     console.log("✅ Connected to MongoDB");
 
@@ -64,21 +80,23 @@ async function startServer() {
         const locations = await locationsCollection.find().toArray();
         res.json(locations);
       } catch (error) {
-        console.error("MongoDB fetch error:", error); // full error
+        console.error("MongoDB fetch error:", error);
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
+
     // GET: Fetch all items
     app.get("/api/items", async (req, res) => {
       try {
         const items = await itemsCollection.find().toArray();
         res.json(items);
       } catch (error) {
-        console.error("MongoDB fetch error:", error); // full error
-        res.status(500).json({ error: "Failed to fetch locations" });
+        console.error("MongoDB fetch error:", error);
+        res.status(500).json({ error: "Failed to fetch items" });
       }
     });
-    //get total number of items
+
+    // GET: Total number of items
     app.get("/api/totalNumber", async (req, res) => {
       try {
         const totalNumber = await itemsCollection.countDocuments({});
@@ -88,19 +106,17 @@ async function startServer() {
         return res.status(500).send("Error fetching total number of items");
       }
     });
-    // ✅ search request:
 
-    // GET: Fetch filtered items by search term
+    // GET: Search items
     app.get("/api/search", async (req, res) => {
       try {
-        const query = req.query.q; // e.g. /api/search?q=chair
+        const query = req.query.q;
         if (!query) {
           return res
             .status(400)
             .json({ error: "Query parameter 'q' is required" });
         }
 
-        // Case-insensitive regex search on name/title/description
         const items = await itemsCollection
           .find({
             $or: [
@@ -117,38 +133,83 @@ async function startServer() {
         res.status(500).json({ error: "Failed to search items" });
       }
     });
-// authentication
-// POST: Login
-app.post("/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
 
-    const user = await usersCollection.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ error: "Invalid email or password" });
-    }
+    // --- AUTHENTICATION ROUTES ---
 
-    // Vérifier le mot de passe
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      return res.status(400).json({ error: "Invalid email or password" });
-    }
+    // POST: Register
+    app.post("/auth/register", async (req, res) => {
+      try {
+        const { email, password, name } = req.body;
+        if (!email || !password) {
+          return res.status(400).json({ error: "Email and password are required" });
+        }
 
-    // Générer un token JWT
-    const token = jwt.sign(
-      { email: user.email, role: user.role },
-      "secretKey", // ⚠️ à mettre dans process.env.JWT_SECRET en production
-      { expiresIn: "1h" }
-    );
+        const existingUser = await usersCollection.findOne({ email });
+        if (existingUser) {
+          return res.status(400).json({ error: "User already exists" });
+        }
 
-    res.json({ token });
-  } catch (error) {
-    console.error("❌ Login error:", error);
-    res.status(500).json({ error: "Failed to login" });
-  }
-});
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = { email, password: hashedPassword, name, role: "user" };
 
-    // ✅ POST: Log a page visit
+        await usersCollection.insertOne(newUser);
+        res.status(201).json({ message: "User registered successfully" });
+      } catch (error) {
+        console.error("❌ Register error:", error);
+        res.status(500).json({ error: "Failed to register" });
+      }
+    });
+
+    // POST: Login
+    app.post("/auth/login", async (req, res) => {
+      try {
+        const { email, password } = req.body;
+        const user = await usersCollection.findOne({ email });
+        if (!user) {
+          return res.status(400).json({ error: "Invalid email or password" });
+        }
+
+        const validPassword = await bcrypt.compare(password, user.password);
+        if (!validPassword) {
+          return res.status(400).json({ error: "Invalid email or password" });
+        }
+
+        const token = jwt.sign(
+          { email: user.email, role: user.role },
+          JWT_SECRET,
+          { expiresIn: "1h" }
+        );
+
+        res.json({ token });
+      } catch (error) {
+        console.error("❌ Login error:", error);
+        res.status(500).json({ error: "Failed to login" });
+      }
+    });
+
+    // POST: Logout
+    app.post("/auth/logout", (req, res) => {
+      // Stateless: just tell frontend to clear token
+      res.json({ message: "Logged out successfully" });
+    });
+
+    // GET: Current user
+    app.get("/auth/me", authMiddleware, async (req, res) => {
+      try {
+        const user = await usersCollection.findOne(
+          { email: req.user.email },
+          { projection: { password: 0 } } // hide password
+        );
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        res.json(user);
+      } catch (error) {
+        console.error("❌ Me error:", error);
+        res.status(500).json({ error: "Failed to fetch user" });
+      }
+    });
+
+    // --- LOG VISITS ---
     app.post("/api/visit", async (req, res) => {
       try {
         const visit = {
@@ -163,12 +224,12 @@ app.post("/auth/login", async (req, res) => {
         res.status(500).json({ error: "Failed to log visit" });
       }
     });
-    // Start Express server
+
+    // --- SERVER START ---
     const server = app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
 
-    // Graceful shutdown (for Render or other PaaS)
     process.on("SIGTERM", () => {
       console.log("⚡ SIGTERM received, closing server...");
       server.close(async () => {
