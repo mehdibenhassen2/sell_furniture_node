@@ -10,13 +10,12 @@ const PORT = process.env.PORT || 3000;
 
 // ✅ MongoDB URI from environment variables
 const uri = process.env.MONGODB_URI;
+const JWT_SECRET = process.env.JWT_SECRET || "defaultSecret";
+
 if (!uri) {
-  console.error("❌ MONGODB_URI is not set in environment variables!");
+  console.error("❌ MONGODB_URI is not set!");
   process.exit(1);
 }
-
-// ✅ JWT secret
-const JWT_SECRET = process.env.JWT_SECRET || "defaultSecret";
 
 // Middleware
 app.use(cors({ origin: true, credentials: true }));
@@ -40,12 +39,12 @@ function authMiddleware(req, res, next) {
   const token = authHeader.split(" ")[1];
   jwt.verify(token, JWT_SECRET, (err, decoded) => {
     if (err) return res.status(403).json({ error: "Invalid token" });
-    req.user = decoded; // store user info
+    req.user = decoded;
     next();
   });
 }
 
-// Async function to start the server after DB connection
+// Start server after DB connection
 async function startServer() {
   try {
     await client.connect();
@@ -56,160 +55,139 @@ async function startServer() {
     usersCollection = db.collection("users");
     console.log("✅ Connected to MongoDB");
 
-    // --- ROUTES ---
-
-    // POST: Add new location
-    app.post("/api/locations", async (req, res) => {
-      try {
-        const { name } = req.body;
-        if (!name)
-          return res.status(400).json({ error: "Location name is required" });
-
-        const newLocation = { name };
-        const result = await locationsCollection.insertOne(newLocation);
-        res.status(201).json({ id: result.insertedId, ...newLocation });
-      } catch (error) {
-        console.error("❌ Error inserting location:", error);
-        res.status(500).json({ error: "Failed to add location" });
-      }
-    });
-
-    // GET: Fetch all locations
-    app.get("/api/locations", async (req, res) => {
-      try {
-        const locations = await locationsCollection.find().toArray();
-        res.json(locations);
-      } catch (error) {
-        console.error("MongoDB fetch error:", error);
-        res.status(500).json({ error: "Failed to fetch locations" });
-      }
-    });
-
-    // GET: Fetch all items
+    // ---------------------------
+    // ITEMS
+    // ---------------------------
+    // Public: GET all items
     app.get("/api/items", async (req, res) => {
       try {
         const items = await itemsCollection.find().toArray();
         res.json(items);
-      } catch (error) {
-        console.error("MongoDB fetch error:", error);
+      } catch (err) {
+        console.error(err);
         res.status(500).json({ error: "Failed to fetch items" });
       }
     });
 
-    // GET: Total number of items
-    app.get("/api/totalNumber", async (req, res) => {
+    // Protected: POST new item
+    app.post("/api/items", authMiddleware, async (req, res) => {
       try {
-        const totalNumber = await itemsCollection.countDocuments({});
-        return res.json({ totalNumber });
-      } catch (error) {
-        console.error("Error fetching total number of items:", error);
-        return res.status(500).send("Error fetching total number of items");
+        const newItem = {
+          ...req.body,
+          userId: req.user.email,
+          createdAt: new Date(),
+        };
+        const result = await itemsCollection.insertOne(newItem);
+        res.status(201).json({ id: result.insertedId, ...newItem });
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to add item" });
       }
     });
 
-    // GET: Search items
-    app.get("/api/search", async (req, res) => {
+    // ---------------------------
+    // LOCATIONS
+    // ---------------------------
+    // Public: GET all locations
+    app.get("/api/locations", async (req, res) => {
       try {
-        const query = req.query.q;
-        if (!query) {
-          return res
-            .status(400)
-            .json({ error: "Query parameter 'q' is required" });
-        }
-
-        const items = await itemsCollection
-          .find({
-            $or: [
-              { name: { $regex: query, $options: "i" } },
-              { title: { $regex: query, $options: "i" } },
-              { description: { $regex: query, $options: "i" } },
-            ],
-          })
-          .toArray();
-
-        res.json(items);
-      } catch (error) {
-        console.error("❌ MongoDB search error:", error);
-        res.status(500).json({ error: "Failed to search items" });
+        const locations = await locationsCollection.find().toArray();
+        res.json(locations);
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
 
-    // --- AUTHENTICATION ROUTES ---
+    // Protected: POST new location
+    app.post("/api/locations", authMiddleware, async (req, res) => {
+      try {
+        const newLocation = {
+          ...req.body,
+          userId: req.user.email,
+          createdAt: new Date(),
+        };
+        const result = await locationsCollection.insertOne(newLocation);
+        res.status(201).json({ id: result.insertedId, ...newLocation });
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to add location" });
+      }
+    });
 
-    // POST: Register
+    // ---------------------------
+    // AUTHENTICATION
+    // ---------------------------
     app.post("/auth/register", async (req, res) => {
       try {
         const { email, password, name } = req.body;
-        if (!email || !password) {
-          return res.status(400).json({ error: "Email and password are required" });
-        }
+        if (!email || !password)
+          return res.status(400).json({ error: "Email and password required" });
 
-        const existingUser = await usersCollection.findOne({ email });
-        if (existingUser) {
+        const exists = await usersCollection.findOne({ email });
+        if (exists)
           return res.status(400).json({ error: "User already exists" });
-        }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = { email, password: hashedPassword, name, role: "user" };
-
+        const hashed = await bcrypt.hash(password, 10);
+        const newUser = {
+          email,
+          password: hashed,
+          name,
+          role: "user",
+          createdAt: new Date(),
+        };
         await usersCollection.insertOne(newUser);
         res.status(201).json({ message: "User registered successfully" });
-      } catch (error) {
-        console.error("❌ Register error:", error);
+      } catch (err) {
+        console.error(err);
         res.status(500).json({ error: "Failed to register" });
       }
     });
 
-    // POST: Login
     app.post("/auth/login", async (req, res) => {
       try {
         const { email, password } = req.body;
         const user = await usersCollection.findOne({ email });
-        if (!user) {
+        if (!user)
           return res.status(400).json({ error: "Invalid email or password" });
-        }
 
-        const validPassword = await bcrypt.compare(password, user.password);
-        if (!validPassword) {
+        const valid = await bcrypt.compare(password, user.password);
+        if (!valid)
           return res.status(400).json({ error: "Invalid email or password" });
-        }
 
         const token = jwt.sign(
           { email: user.email, role: user.role },
           JWT_SECRET,
           { expiresIn: "1h" }
         );
-
         res.json({ token });
-      } catch (error) {
-        console.error("❌ Login error:", error);
+      } catch (err) {
+        console.error(err);
         res.status(500).json({ error: "Failed to login" });
       }
     });
 
-    // POST: Logout
     app.post("/auth/logout", (req, res) => {
-      // Stateless: just tell frontend to clear token
       res.json({ message: "Logged out successfully" });
     });
 
-    // GET: Current user
     app.get("/auth/me", authMiddleware, async (req, res) => {
       try {
         const user = await usersCollection.findOne(
           { email: req.user.email },
-          { projection: { password: 0 } } // hide password
+          { projection: { password: 0 } }
         );
         if (!user) return res.status(404).json({ error: "User not found" });
-
         res.json(user);
-      } catch (error) {
-        console.error("❌ Me error:", error);
+      } catch (err) {
+        console.error(err);
         res.status(500).json({ error: "Failed to fetch user" });
       }
     });
 
-    // --- LOG VISITS ---
+    // ---------------------------
+    // VISITS
+    // ---------------------------
     app.post("/api/visit", async (req, res) => {
       try {
         const visit = {
@@ -219,35 +197,37 @@ async function startServer() {
         };
         const result = await visitsCollection.insertOne(visit);
         res.status(201).json({ id: result.insertedId, ...visit });
-      } catch (error) {
-        console.error("❌ Error logging visit:", error);
+      } catch (err) {
+        console.error(err);
         res.status(500).json({ error: "Failed to log visit" });
       }
     });
 
-    // --- SERVER START ---
-    const server = app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-    });
+    // ---------------------------
+    // START SERVER
+    // ---------------------------
+    const server = app.listen(PORT, () =>
+      console.log(`🚀 Server running on port ${PORT}`)
+    );
 
     process.on("SIGTERM", () => {
       console.log("⚡ SIGTERM received, closing server...");
       server.close(async () => {
         await client.close();
-        console.log("✅ MongoDB connection closed. Exiting.");
+        console.log("✅ MongoDB closed. Exiting.");
         process.exit(0);
       });
     });
 
     process.on("unhandledRejection", (reason, promise) => {
-      console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
+      console.error("❌ Unhandled Rejection:", reason, promise);
       process.exit(1);
     });
-  } catch (error) {
-    console.error("❌ Failed to connect to MongoDB:", error);
+  } catch (err) {
+    console.error("❌ Failed to connect to MongoDB:", err);
     process.exit(1);
   }
 }
 
-// Start the server
+// Start server
 startServer();
