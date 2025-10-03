@@ -98,39 +98,51 @@ async function startServer() {
     // POST: Add new item (protected)
     app.post("/api/items", authMiddleware, async (req, res) => {
       try {
-        const { 
-          title, 
-          description, 
+        const {
+          title,
+          description,
           category,
           pictures,
-          price, 
-          locationId, 
-          retail, 
-          available, 
-          url, 
-          instructions 
+          price,
+          locationId,
+          retail,
+          available,
+          url,
+          instructions,
+          condition
         } = req.body;
-    
-        if (!title || !price) {
+
+        // Validate required fields
+        if (!title || price === undefined || price === null || price === "") {
           return res.status(400).json({ error: "Title and price are required" });
         }
-    
+
+        const parsedPrice = Number(price);
+        if (Number.isNaN(parsedPrice)) {
+          return res.status(400).json({ error: "Price must be a number" });
+        }
+
+        const parsedRetail = retail !== undefined && retail !== null && retail !== "" ? Number(retail) : null;
+        if (parsedRetail !== null && Number.isNaN(parsedRetail)) {
+          return res.status(400).json({ error: "Retail must be a number" });
+        }
+
         const newItem = {
           title,
           description: description || "",
-          price: Number(price),
-          
-          retail: retail ? Number(retail) : null,   // ✅ fixed
+          category: category || "",
+          pictures: Array.isArray(pictures) ? pictures : [],
+          price: parsedPrice,
+          retail: parsedRetail,
           locationId: locationId || null,
-          createdBy: req.user.email,               // track user
+          createdBy: req.user.email, // track who created it
           createdAt: new Date(),
           available: available !== undefined ? Boolean(available) : true,
           url: url || "",
-          category: category,
-          pictures: pictures;
-          instructions: instructions || ""
+          instructions: instructions || "",
+          condition: condition || ""
         };
-    
+
         const result = await itemsCollection.insertOne(newItem);
         res.status(201).json({ id: result.insertedId, ...newItem });
       } catch (error) {
