@@ -101,6 +101,8 @@ async function startServer() {
         const { 
           title, 
           description, 
+          category,
+          pictures,
           price, 
           locationId, 
           retail, 
@@ -117,12 +119,15 @@ async function startServer() {
           title,
           description: description || "",
           price: Number(price),
+          
           retail: retail ? Number(retail) : null,   // ✅ fixed
           locationId: locationId || null,
           createdBy: req.user.email,               // track user
           createdAt: new Date(),
           available: available !== undefined ? Boolean(available) : true,
           url: url || "",
+          category: category,
+          pictures: pictures;
           instructions: instructions || ""
         };
     
