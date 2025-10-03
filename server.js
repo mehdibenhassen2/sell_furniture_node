@@ -98,26 +98,34 @@ async function startServer() {
     // POST: Add new item (protected)
     app.post("/api/items", authMiddleware, async (req, res) => {
       try {
-        const { title, description, price, locationId,retail, available, url,instructions  } = req.body;
-
+        const { 
+          title, 
+          description, 
+          price, 
+          locationId, 
+          retail, 
+          available, 
+          url, 
+          instructions 
+        } = req.body;
+    
         if (!title || !price) {
           return res.status(400).json({ error: "Title and price are required" });
         }
-
+    
         const newItem = {
-          title: title,
+          title,
           description: description || "",
           price: Number(price),
-          retail: number (retail),
+          retail: retail ? Number(retail) : null,   // ✅ fixed
           locationId: locationId || null,
-          createdBy: req.user.email, // 👤 track who created it
+          createdBy: req.user.email,               // track user
           createdAt: new Date(),
-          available: Boolean(available) ,
-          url: url,
-          instructions: instructions,
-
+          available: available !== undefined ? Boolean(available) : true,
+          url: url || "",
+          instructions: instructions || ""
         };
-
+    
         const result = await itemsCollection.insertOne(newItem);
         res.status(201).json({ id: result.insertedId, ...newItem });
       } catch (error) {
@@ -125,6 +133,7 @@ async function startServer() {
         res.status(500).json({ error: "Failed to add item" });
       }
     });
+    
 
     // GET: Total number of items
     app.get("/api/totalNumber", async (req, res) => {
