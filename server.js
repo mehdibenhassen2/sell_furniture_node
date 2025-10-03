@@ -4,6 +4,9 @@ const cors = require("cors");
 const { MongoClient, ServerApiVersion } = require("mongodb");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,6 +24,25 @@ const JWT_SECRET = process.env.JWT_SECRET || "defaultSecret";
 // Middleware
 app.use(cors({ origin: true, credentials: true }));
 app.use(bodyParser.json());
+
+// ✅ serve uploaded images statically
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// ensure uploads dir exists
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads");
+}
+
+// ✅ Multer setup for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
+});
+const upload = multer({ storage });
 
 const client = new MongoClient(uri, {
   serverApi: {
@@ -40,7 +62,7 @@ function authMiddleware(req, res, next) {
   const token = authHeader.split(" ")[1];
   jwt.verify(token, JWT_SECRET, (err, decoded) => {
     if (err) return res.status(403).json({ error: "Invalid token" });
-    req.user = decoded; // store user info
+    req.user = decoded;
     next();
   });
 }
@@ -57,7 +79,6 @@ async function startServer() {
     console.log("✅ Connected to MongoDB");
 
     // --- ROUTES ---
-
     // POST: Add new location
     app.post("/api/locations", async (req, res) => {
       try {
@@ -95,62 +116,145 @@ async function startServer() {
         res.status(500).json({ error: "Failed to fetch items" });
       }
     });
-    // POST: Add new item (protected)
-    app.post("/api/items", authMiddleware, async (req, res) => {
+    // 📌 POST: Register user
+    app.post("/api/register", async (req, res) => {
       try {
-        const {
-          title,
-          description,
-          category,
-          pictures,
-          price,
-          locationId,
-          retail,
-          available,
-          url,
-          instructions,
-          condition
-        } = req.body;
-
-        // Validate required fields
-        if (!title || price === undefined || price === null || price === "") {
-          return res.status(400).json({ error: "Title and price are required" });
+        const { email, password } = req.body;
+        if (!email || !password) {
+          return res.status(400).json({ error: "Email and password required" });
         }
 
-        const parsedPrice = Number(price);
-        if (Number.isNaN(parsedPrice)) {
-          return res.status(400).json({ error: "Price must be a number" });
+        const existingUser = await usersCollection.findOne({ email });
+        if (existingUser) {
+          return res.status(400).json({ error: "User already exists" });
         }
 
-        const parsedRetail = retail !== undefined && retail !== null && retail !== "" ? Number(retail) : null;
-        if (parsedRetail !== null && Number.isNaN(parsedRetail)) {
-          return res.status(400).json({ error: "Retail must be a number" });
-        }
-
-        const newItem = {
-          title,
-          description: description || "",
-          category: category || "",
-          pictures: Array.isArray(pictures) ? pictures : [],
-          price: parsedPrice,
-          retail: parsedRetail,
-          locationId: locationId || null,
-          createdBy: req.user.email, // track who created it
-          createdAt: new Date(),
-          available: available !== undefined ? Boolean(available) : true,
-          url: url || "",
-          instructions: instructions || "",
-          condition: condition || ""
-        };
-
-        const result = await itemsCollection.insertOne(newItem);
-        res.status(201).json({ id: result.insertedId, ...newItem });
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await usersCollection.insertOne({ email, password: hashedPassword });
+        res.status(201).json({ message: "User registered successfully" });
       } catch (error) {
-        console.error("❌ Error adding item:", error);
-        res.status(500).json({ error: "Failed to add item" });
+        console.error("❌ Register error:", error);
+        res.status(500).json({ error: "Failed to register user" });
       }
     });
-    
+
+    // 📌 POST: Login user
+    app.post("/api/login", async (req, res) => {
+      try {
+        const { email, password } = req.body;
+        const user = await usersCollection.findOne({ email });
+        if (!user)
+          return res.status(401).json({ error: "Invalid credentials" });
+
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+          return res.status(401).json({ error: "Invalid credentials" });
+        }
+
+        const token = jwt.sign({ email: user.email }, JWT_SECRET, {
+          expiresIn: "1h",
+        });
+        res.json({ token });
+      } catch (error) {
+        console.error("❌ Login error:", error);
+        res.status(500).json({ error: "Failed to login" });
+      }
+    });
+
+    // 📌 GET: Fetch all items
+    app.get("/api/items", async (req, res) => {
+      try {
+        const items = await itemsCollection.find({}).toArray();
+
+        // prepend full URL to pictures
+        const host = `${req.protocol}://${req.get("host")}`;
+        const itemsWithUrls = items.map((item) => ({
+          ...item,
+          pictures: (item.pictures || []).map((p) =>
+            p.startsWith("http") ? p : `${host}${p}`
+          ),
+        }));
+
+        res.json(itemsWithUrls);
+      } catch (error) {
+        console.error("❌ Error fetching items:", error);
+        res.status(500).json({ error: "Failed to fetch items" });
+      }
+    });
+
+    // 📌 POST: Add new item (with multiple images) 🔥
+    app.post(
+      "/api/items",
+      authMiddleware,
+      upload.array("images", 10),
+      async (req, res) => {
+        try {
+          const {
+            title,
+            description,
+            category,
+            price,
+            locationId,
+            retail,
+            available,
+            instructions,
+            condition,
+          } = req.body;
+
+          if (!title || !price) {
+            return res
+              .status(400)
+              .json({ error: "Title and price are required" });
+          }
+
+          const parsedPrice = Number(price);
+          if (Number.isNaN(parsedPrice)) {
+            return res.status(400).json({ error: "Price must be a number" });
+          }
+
+          const parsedRetail =
+            retail !== undefined && retail !== null && retail !== ""
+              ? Number(retail)
+              : null;
+          if (parsedRetail !== null && Number.isNaN(parsedRetail)) {
+            return res.status(400).json({ error: "Retail must be a number" });
+          }
+
+          // save uploaded image paths
+          const imagePaths = req.files.map(
+            (file) => `/uploads/${file.filename}`
+          );
+
+          const newItem = {
+            title,
+            description: description || "",
+            category: category || "",
+            pictures: imagePaths,
+            price: parsedPrice,
+            retail: parsedRetail,
+            locationId: locationId || null,
+            createdBy: req.user.email,
+            createdAt: new Date(),
+            available: available !== undefined ? Boolean(available) : true,
+            instructions: instructions || "",
+            condition: condition || "Good",
+          };
+
+          const result = await itemsCollection.insertOne(newItem);
+
+          // prepend full URLs to response
+          const host = `${req.protocol}://${req.get("host")}`;
+          res.status(201).json({
+            id: result.insertedId,
+            ...newItem,
+            pictures: imagePaths.map((p) => `${host}${p}`),
+          });
+        } catch (error) {
+          console.error("❌ Error adding item:", error);
+          res.status(500).json({ error: "Failed to add item" });
+        }
+      }
+    );
 
     // GET: Total number of items
     app.get("/api/totalNumber", async (req, res) => {
@@ -283,7 +387,7 @@ async function startServer() {
       }
     });
 
-    // --- SERVER START ---
+    // --- Server startup ---
     const server = app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
