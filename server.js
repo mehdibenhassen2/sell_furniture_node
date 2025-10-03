@@ -108,7 +108,7 @@ async function startServer() {
           title: title,
           description: description || "",
           price: Number(price),
-          retail: number (retail)
+          retail: number (retail),
           locationId: locationId || null,
           createdBy: req.user.email, // 👤 track who created it
           createdAt: new Date(),
