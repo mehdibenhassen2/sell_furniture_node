@@ -98,19 +98,24 @@ async function startServer() {
     // POST: Add new item (protected)
     app.post("/api/items", authMiddleware, async (req, res) => {
       try {
-        const { name, description, price, locationId } = req.body;
+        const { title, description, price, locationId,retail, available, url,instructions  } = req.body;
 
-        if (!name || !price) {
-          return res.status(400).json({ error: "Name and price are required" });
+        if (!title || !price) {
+          return res.status(400).json({ error: "Title and price are required" });
         }
 
         const newItem = {
-          name,
+          title: title,
           description: description || "",
           price: Number(price),
+          retail: number (retail)
           locationId: locationId || null,
           createdBy: req.user.email, // 👤 track who created it
           createdAt: new Date(),
+          available: Boolean(available) ,
+          url: url,
+          instructions: instructions,
+
         };
 
         const result = await itemsCollection.insertOne(newItem);
