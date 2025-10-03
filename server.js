@@ -95,6 +95,31 @@ async function startServer() {
         res.status(500).json({ error: "Failed to fetch items" });
       }
     });
+    // POST: Add new item (protected)
+    app.post("/api/items", authMiddleware, async (req, res) => {
+      try {
+        const { name, description, price, locationId } = req.body;
+
+        if (!name || !price) {
+          return res.status(400).json({ error: "Name and price are required" });
+        }
+
+        const newItem = {
+          name,
+          description: description || "",
+          price: Number(price),
+          locationId: locationId || null,
+          createdBy: req.user.email, // 👤 track who created it
+          createdAt: new Date(),
+        };
+
+        const result = await itemsCollection.insertOne(newItem);
+        res.status(201).json({ id: result.insertedId, ...newItem });
+      } catch (error) {
+        console.error("❌ Error adding item:", error);
+        res.status(500).json({ error: "Failed to add item" });
+      }
+    });
 
     // GET: Total number of items
     app.get("/api/totalNumber", async (req, res) => {
@@ -141,7 +166,9 @@ async function startServer() {
       try {
         const { email, password, name } = req.body;
         if (!email || !password) {
-          return res.status(400).json({ error: "Email and password are required" });
+          return res
+            .status(400)
+            .json({ error: "Email and password are required" });
         }
 
         const existingUser = await usersCollection.findOne({ email });
