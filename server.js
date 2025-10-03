@@ -181,7 +181,32 @@ async function startServer() {
         res.status(500).json({ error: "Failed to fetch items" });
       }
     });
+    const cloudinary = require('cloudinary').v2;
 
+    // configure Cloudinary
+    cloudinary.config({
+      cloud_name: 'dhm6vqs0t',
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET
+    });
+    
+    // Fetch images from folder
+    app.get('/api/cloudinary-images', async (req, res) => {
+      try {
+        const folder = req.query.folder || 'Home/ikea';
+        const result = await cloudinary.api.resources({
+          type: 'upload',
+          prefix: folder + '/',
+          max_results: 100
+        });
+    
+        const urls = result.resources.map(r => r.secure_url);
+        res.json(urls);
+      } catch (err) {
+        console.error('Cloudinary fetch error:', err);
+        res.status(500).json({ error: 'Failed to fetch Cloudinary images' });
+      }
+    });
     // 📌 POST: Add new item (with multiple images) 🔥
     app.post(
       "/api/items",
